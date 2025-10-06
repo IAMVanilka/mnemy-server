@@ -1,0 +1,207 @@
+<div id="settings-module">
+    <h2>Настройки системы</h2>
+
+    <!-- Форма редактирования настроек -->
+    <div class="settings-form">
+        <div class="form-group">
+            <label for="backups-limit">Лимит бэкапов:</label>
+            <input type="number" id="backups-limit" min="1" placeholder="Количество бэкапов">
+        </div>
+
+        <div class="form-group">
+            <label for="test-param">Тестовый параметр:</label>
+            <input type="text" id="test-param" placeholder="Значение параметра">
+        </div>
+
+        <button id="save-settings-btn">Сохранить настройки</button>
+    </div>
+</div>
+
+<!-- Контейнер для всплывающих уведомлений -->
+<div id="notifications-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 9999;"></div>
+
+<script>
+    // Инициализация модуля настроек
+    window.initSettingsModule = function() {
+        console.log('Инициализация модуля настроек');
+
+        // Назначаем обработчики событий
+        const saveBtn = document.getElementById('save-settings-btn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', window.saveSettings);
+        }
+
+        // Загружаем текущие настройки
+        window.loadSettings();
+    };
+
+    // Загрузка настроек
+    window.loadSettings = async function() {
+        try {
+            const token = localStorage.getItem('access_token');
+            const response = await fetch('/panel/users/get_settings', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                const settings = data.settings;
+                document.getElementById('backups-limit').value = settings.backups_limit;
+                document.getElementById('test-param').value = settings.test_param || '';
+                window.showSettingsNotification('Настройки загружены', 'success');
+            } else if (response.status === 401) {
+                const refreshed = await window.refreshToken();
+                if (refreshed) window.loadSettings();
+            } else {
+                window.showSettingsNotification(`Ошибка загрузки: ${data.detail || 'Неизвестная ошибка'}`, 'error');
+            }
+        } catch (err) {
+            console.error('Ошибка загрузки настроек:', err);
+            window.showSettingsNotification('Ошибка сети при загрузке настроек', 'error');
+        }
+    };
+
+    // Сохранение настроек
+    window.saveSettings = async function() {
+        const backupsLimit = document.getElementById('backups-limit').value;
+        const testParam = document.getElementById('test-param').value;
+
+        // Валидация
+        if (!backupsLimit || backupsLimit < 1) {
+            window.showSettingsNotification('Лимит бэкапов должен быть положительным числом', 'error');
+            return;
+        }
+
+        const settingsData = {
+            backups_limit: parseInt(backupsLimit),
+            test_param: testParam
+        };
+
+        try {
+            const token = localStorage.getItem('access_token');
+            const response = await fetch('/panel/users/change_settings', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(settingsData)
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                window.showSettingsNotification(data.msg || 'Настройки успешно сохранены!', 'success');
+            } else if (response.status === 401) {
+                const refreshed = await window.refreshToken();
+                if (refreshed) window.saveSettings();
+            } else {
+                window.showSettingsNotification(`Ошибка сохранения: ${data.detail || 'Неизвестная ошибка'}`, 'error');
+            }
+        } catch (err) {
+            console.error('Ошибка сохранения настроек:', err);
+            window.showSettingsNotification('Ошибка сети при сохранении настроек', 'error');
+        }
+    };
+
+    // Отображение всплывающих уведомлений
+    window.showSettingsNotification = function(message, type) {
+        const container = document.getElementById('notifications-container');
+        if (!container) return;
+
+        // Создаем элемент уведомления
+        const notification = document.createElement('div');
+
+        // Определяем стили в зависимости от типа
+        let backgroundColor, borderColor, textColor, icon;
+        if (type === 'success') {
+            backgroundColor = '#d4edda';
+            borderColor = '#c3e6cb';
+            textColor = '#155724';
+            icon = '✓';
+        } else {
+            backgroundColor = '#f8d7da';
+            borderColor = '#f5c6cb';
+            textColor = '#721c24';
+            icon = '✗';
+        }
+
+        // Стили уведомления
+        notification.style.cssText = `
+            background-color: ${backgroundColor};
+            border: 1px solid ${borderColor};
+            color: ${textColor};
+            padding: 15px 20px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            min-width: 300px;
+            max-width: 400px;
+            position: relative;
+            animation: slideIn 0.3s ease-out;
+            word-wrap: break-word;
+        `;
+
+        // Добавляем иконку и текст
+        notification.innerHTML = `
+            <div style="display: flex; align-items: flex-start;">
+                <span style="font-weight: bold; margin-right: 10px;">${icon}</span>
+                <span>${message}</span>
+            </div>
+        `;
+
+        // Добавляем кнопку закрытия
+        const closeBtn = document.createElement('button');
+        closeBtn.innerHTML = '×';
+        closeBtn.style.cssText = `
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            background: none;
+            border: none;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            color: ${textColor};
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        `;
+        closeBtn.onclick = function() {
+            notification.remove();
+        };
+        notification.appendChild(closeBtn);
+
+        // Добавляем уведомление в контейнер
+        container.appendChild(notification);
+
+        // Автоматическое удаление через 5 секунд
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 5000);
+
+        // Добавляем анимацию появления
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    };
+</script>

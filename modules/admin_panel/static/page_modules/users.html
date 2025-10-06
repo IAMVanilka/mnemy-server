@@ -1,0 +1,131 @@
+<div id="users-module">
+    <h2>Управление пользователями</h2>
+
+    <!-- Форма добавления пользователя -->
+    <div class="form-group">
+        <input type="text" id="new-username" placeholder="Имя пользователя">
+        <button id="add-user-btn">Добавить пользователя</button>
+    </div>
+
+    <!-- Список пользователей -->
+    <div id="users-list">
+        <p>Загрузка...</p>
+    </div>
+</div>
+
+<script>
+    // Инициализация модуля
+    window.initUsersModule = function() {
+        console.log('Инициализация модуля пользователей');
+
+        // Назначаем обработчики событий
+        const addBtn = document.getElementById('add-user-btn');
+        if (addBtn) {
+            addBtn.addEventListener('click', window.addUser);
+        }
+
+        // Загружаем список пользователей
+        window.loadUsers();
+    };
+
+    // Функции модуля
+    window.loadUsers = async function() {
+        try {
+            const token = localStorage.getItem('access_token');
+            const response = await fetch('/panel/users/get_users', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                const users = data.users;
+                let html = '<table><thead><tr><th>Имя пользователя</th><th>API токен</th><th>Действия</th></tr></thead><tbody>';
+                for (const [username, api_token] of Object.entries(users)) {
+                    html += `<tr>
+                        <td>${username}</td>
+                        <td>${api_token}</td>
+                        <td><button class="danger" onclick="window.deleteUser(\'${username}\')">Удалить</button></td>
+                    </tr>`;
+                }
+                html += '</tbody></table>';
+                document.getElementById('users-list').innerHTML = html;
+            } else if (response.status === 401) {
+                const refreshed = await window.refreshToken();
+                if (refreshed) window.loadUsers();
+            } else {
+                document.getElementById('users-list').innerHTML = `<p>Ошибка: ${data.detail || 'Неизвестная ошибка'}</p>`;
+            }
+        } catch (err) {
+            console.error('Ошибка загрузки пользователей:', err);
+            document.getElementById('users-list').innerHTML = '<p>Ошибка сети</p>';
+        }
+    };
+
+    window.addUser = async function() {
+        const username = document.getElementById('new-username').value.trim();
+        if (!username) {
+            alert("Введите имя пользователя");
+            return;
+        }
+
+        try {
+            const token = localStorage.getItem('access_token');
+            const response = await fetch(`/panel/users/add?username=${encodeURIComponent(username)}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.status === 201) {
+                alert(data.message);
+                document.getElementById('new-username').value = '';
+                window.loadUsers();
+            } else if (response.status === 401) {
+                const refreshed = await window.refreshToken();
+                if (refreshed) window.addUser();
+            } else {
+                alert(`Ошибка: ${data.detail || 'Неизвестная ошибка'}`);
+            }
+        } catch (err) {
+            console.error('Ошибка добавления пользователя:', err);
+            alert("Ошибка сети");
+        }
+    };
+
+    window.deleteUser = async function(username) {
+        if (!confirm(`Вы уверены, что хотите удалить пользователя "${username}"?`)) return;
+
+        try {
+            const token = localStorage.getItem('access_token');
+            const response = await fetch(`/panel/users/delete?username=${encodeURIComponent(username)}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                alert(data.message);
+                window.loadUsers();
+            } else if (response.status === 401) {
+                const refreshed = await window.refreshToken();
+                if (refreshed) window.deleteUser(username);
+            } else {
+                alert(`Ошибка: ${data.detail || 'Неизвестная ошибка'}`);
+            }
+        } catch (err) {
+            console.error('Ошибка удаления пользователя:', err);
+            alert("Ошибка сети");
+        }
+    };
+</script>
