@@ -86,11 +86,16 @@ async def upload_data(file: UploadFile, game_name: str = Form(...), user = Depen
 @files_router.get("/download_data")
 async def download_data(game_name: str, user = Depends(check_api_token)):
     username = user.username
-    return StreamingResponse(
-        create_archive_chunk_generator(f"saves/{username}/{game_name}"),
-        media_type="application/gzip",
-        headers={"Content-Disposition": f"attachment; filename={game_name.replace(" ", "_")}-saves.tar.gz"}
-    )
+    if os.path.exists(f"saves/{username}/{game_name}") and len(os.listdir(f"saves/{username}/{game_name}")) == 0:
+        raise HTTPException(404, f"Saves doesn't exist!")
+    elif not os.path.exists(f"saves/{username}/{game_name}"):
+        raise HTTPException(404, f"Saves doesn't exist!")
+    else:
+        return StreamingResponse(
+            create_archive_chunk_generator(f"saves/{username}/{game_name}"),
+            media_type="application/gzip",
+            headers={"Content-Disposition": f"attachment; filename={game_name.replace(" ", "_")}-saves.tar.gz"}
+        )
 
 @files_router.get('/get_image/{game_name}')
 async def get_image(game_name: str, user = Depends(check_api_token)):
